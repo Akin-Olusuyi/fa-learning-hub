@@ -63,15 +63,16 @@ const $ = s => document.querySelector(s);
 const store = {get(k,d){try{const v=localStorage.getItem('fa13:'+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem('fa13:'+k,JSON.stringify(v))}catch(e){}}};
 // ---------- TRACKING (pre-Journey) ----------
 const TRACK={url:'https://skuadtrio.app.n8n.cloud/webhook/fa-learning-hub',topic:'Financial Activity',version:'V1.4'};
-(function(){let k=new URLSearchParams(location.search).get('k');const hm=(location.hash||'').match(/^#k=([A-Za-z0-9_-]+)$/);if(hm)k=hm[1];if(k){store.set('key',k);history.replaceState(null,'',location.pathname+(hm?'#home':location.hash))}})();
-const trackKey=()=>store.get('key','');const me=()=>store.get('me',null);
+const cleanKey=v=>String(v||'').trim().split(/k=/i).pop().replace(/[^A-Za-z0-9_-]/g,'');
+(function(){let k=new URLSearchParams(location.search).get('k');const hm=(location.hash||'').match(/^#k=([A-Za-z0-9_-]+)$/);if(hm)k=hm[1];k=cleanKey(k);if(k){store.set('key',k);history.replaceState(null,'',location.pathname+(hm?'#home':location.hash))}})();
+const trackKey=()=>cleanKey(store.get('key',''));const me=()=>store.get('me',null);
 function trackOn(){return !!(trackKey()&&me())}
 function track(event_type,ref,score,max,passed){if(!trackOn())return;const m=me();const ev={key:trackKey(),email:m.email,name:m.name,team:m.team||'',topic:TRACK.topic,policy_version:TRACK.version,event_type,ref:ref==null?null:String(ref),score:score==null?null:score,max:max==null?null:max,passed:passed==null?null:!!passed,client_ts:new Date().toISOString()};
  const q=store.get('queue',[]);q.push(ev);store.set('queue',q);flushQueue()}
 let _flushing=false;
-async function flushQueue(){if(_flushing)return;_flushing=true;try{let q=store.get('queue',[]);while(q.length){const ev=q[0];let ok=false;try{const fd=new URLSearchParams();Object.entries(ev).forEach(([k,v])=>{if(v!==null&&v!==undefined)fd.append(k,String(v))});
-   const r=await fetch(TRACK.url,{method:'POST',body:fd,keepalive:true});ok=r.ok;if(r.status===400){ok=true}if(!ok)store.set('lasterr','HTTP '+r.status)}catch(e){ok=false;if(!store.get('lasterr','').startsWith('CSP'))store.set('lasterr',String(e&&e.message||e))}
-  if(ok)store.set('lasterr','')
+async function flushQueue(){if(_flushing)return;_flushing=true;try{let q=store.get('queue',[]);while(q.length){const ev=q[0];if(ev.key!=null)ev.key=cleanKey(ev.key);let ok=false,rej=false;try{const fd=new URLSearchParams();Object.entries(ev).forEach(([k,v])=>{if(v!==null&&v!==undefined)fd.append(k,String(v))});
+   const r=await fetch(TRACK.url,{method:'POST',body:fd,keepalive:true});ok=r.ok;if(r.status===400){ok=true;rej=true;const rj=store.get('rejected',[]);rj.push(ev);store.set('rejected',rj.slice(-200));store.set('lasterr','Not recorded: team key or details rejected — ask your PM for the hub link')}if(!ok)store.set('lasterr','HTTP '+r.status)}catch(e){ok=false;if(!store.get('lasterr','').startsWith('CSP'))store.set('lasterr',String(e&&e.message||e))}
+  if(ok&&!rej)store.set('lasterr','')
   if(!ok)break;q.shift();store.set('queue',q)}
   const pill=$('#whoami');if(pill)pill.title=trackStatus();const st=$('#trackstat');if(st)st.textContent=trackOn()?'Training record: '+trackStatus():''}finally{_flushing=false}}
 window.addEventListener('online',flushQueue);
@@ -92,7 +93,7 @@ function identify(force){const k=trackKey();const m=me();if(m&&k&&!force)return;
 function identifySave(){const name=($('#idn').value||'').trim(),email=($('#ide').value||'').trim().toLowerCase(),team=($('#idt').value||'').trim();
  if(name.length<2){$('#iderr').textContent='Please enter your full name.';return}
  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){$('#iderr').textContent='Please enter a valid work email.';return}
- const key=($('#idk')?.value||'').trim();if(key)store.set('key',key);if(!trackKey()){$('#iderr').textContent='Please enter the team key (ask your PM).';return}
+ const key=cleanKey($('#idk')?.value||'');if(key)store.set('key',key);if(!trackKey()){$('#iderr').textContent='Please enter the team key (ask your PM).';return}
  const first=!me();store.set('skip',false);store.set('me',{name,email,team});$('#idov')?.remove();whoBar();if(first){sessionStorage.setItem('fa14:open','1');track('hub_open','first-visit')}}
 function setNav(h){document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.getAttribute('href')==='#'+h||(h.startsWith('module')&&a.getAttribute('href')==='#learn')))}
 function render(){const h=(location.hash||'#home').slice(1);setNav(h);const v=$('#view');whoBar();
